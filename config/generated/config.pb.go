@@ -13,6 +13,7 @@ It has these top-level messages:
 	LabelPairs
 	GlobalConfig
 	TargetGroup
+	GCEInstanceGroupDiscovery
 	JobConfig
 	PrometheusConfig
 */
@@ -146,6 +147,83 @@ func (m *TargetGroup) GetLabels() *LabelPairs {
 	return nil
 }
 
+// Configuration for a GCE instance group discovery process.
+// API will be called every scrape interval.
+type GCEInstanceGroupDiscovery struct {
+	// Name of the service account to get an access token for.
+	ServiceAccount *string `protobuf:"bytes,1,opt,name=service_account,def=default" json:"service_account,omitempty"`
+	// HTTPS proxy URL to use for API calls, set if the API can only be reached
+	// via a proxy.
+	ApiProxyUrl *string `protobuf:"bytes,2,opt,name=api_proxy_url" json:"api_proxy_url,omitempty"`
+	// Name of Google project.  Required.
+	Project *string `protobuf:"bytes,3,opt,name=project" json:"project,omitempty"`
+	// Name of zone within which the instance group is located. Required.
+	Zone *string `protobuf:"bytes,4,opt,name=zone" json:"zone,omitempty"`
+	// Name of the instance group. Required.
+	InstanceGroup *string `protobuf:"bytes,5,opt,name=instance_group" json:"instance_group,omitempty"`
+	// If set, append this sub-domain to instance names. (e.g. c.<project-name>.internal)
+	AppendDomain *string `protobuf:"bytes,6,opt,name=append_domain" json:"append_domain,omitempty"`
+	// Port number for HTTP metrics query.
+	Port             *int32 `protobuf:"varint,7,opt,name=port,def=80" json:"port,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *GCEInstanceGroupDiscovery) Reset()         { *m = GCEInstanceGroupDiscovery{} }
+func (m *GCEInstanceGroupDiscovery) String() string { return proto.CompactTextString(m) }
+func (*GCEInstanceGroupDiscovery) ProtoMessage()    {}
+
+const Default_GCEInstanceGroupDiscovery_ServiceAccount string = "default"
+const Default_GCEInstanceGroupDiscovery_Port int32 = 80
+
+func (m *GCEInstanceGroupDiscovery) GetServiceAccount() string {
+	if m != nil && m.ServiceAccount != nil {
+		return *m.ServiceAccount
+	}
+	return Default_GCEInstanceGroupDiscovery_ServiceAccount
+}
+
+func (m *GCEInstanceGroupDiscovery) GetApiProxyUrl() string {
+	if m != nil && m.ApiProxyUrl != nil {
+		return *m.ApiProxyUrl
+	}
+	return ""
+}
+
+func (m *GCEInstanceGroupDiscovery) GetProject() string {
+	if m != nil && m.Project != nil {
+		return *m.Project
+	}
+	return ""
+}
+
+func (m *GCEInstanceGroupDiscovery) GetZone() string {
+	if m != nil && m.Zone != nil {
+		return *m.Zone
+	}
+	return ""
+}
+
+func (m *GCEInstanceGroupDiscovery) GetInstanceGroup() string {
+	if m != nil && m.InstanceGroup != nil {
+		return *m.InstanceGroup
+	}
+	return ""
+}
+
+func (m *GCEInstanceGroupDiscovery) GetAppendDomain() string {
+	if m != nil && m.AppendDomain != nil {
+		return *m.AppendDomain
+	}
+	return ""
+}
+
+func (m *GCEInstanceGroupDiscovery) GetPort() int32 {
+	if m != nil && m.Port != nil {
+		return *m.Port
+	}
+	return Default_GCEInstanceGroupDiscovery_Port
+}
+
 // The configuration for a Prometheus job to scrape.
 //
 // The next field no. is 8.
@@ -170,8 +248,11 @@ type JobConfig struct {
 	// used for a job.
 	TargetGroup []*TargetGroup `protobuf:"bytes,5,rep,name=target_group" json:"target_group,omitempty"`
 	// The HTTP resource path to fetch metrics from on targets.
-	MetricsPath      *string `protobuf:"bytes,6,opt,name=metrics_path,def=/metrics" json:"metrics_path,omitempty"`
-	XXX_unrecognized []byte  `json:"-"`
+	MetricsPath *string `protobuf:"bytes,6,opt,name=metrics_path,def=/metrics" json:"metrics_path,omitempty"`
+	// If set, use GCE to discover targets via listing an instance group.
+	// Should not have sd_name or target_group set.
+	GceDiscovery     *GCEInstanceGroupDiscovery `protobuf:"bytes,60,opt,name=gce_discovery" json:"gce_discovery,omitempty"`
+	XXX_unrecognized []byte                     `json:"-"`
 }
 
 func (m *JobConfig) Reset()         { *m = JobConfig{} }
@@ -229,6 +310,13 @@ func (m *JobConfig) GetMetricsPath() string {
 		return *m.MetricsPath
 	}
 	return Default_JobConfig_MetricsPath
+}
+
+func (m *JobConfig) GetGceDiscovery() *GCEInstanceGroupDiscovery {
+	if m != nil {
+		return m.GceDiscovery
+	}
+	return nil
 }
 
 // The top-level Prometheus configuration.

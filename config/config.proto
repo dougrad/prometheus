@@ -48,6 +48,33 @@ message TargetGroup {
 	optional LabelPairs labels = 2;
 }
 
+// Configuration for a GCE instance group discovery process.
+// API will be called every scrape interval.
+message GCEInstanceGroupDiscovery {
+	// Name of the service account to get an access token for.
+	optional string service_account = 1 [default = "default"];
+
+	// HTTPS proxy URL to use for API calls, set if the API can only be reached
+	// via a proxy.
+	optional string api_proxy_url = 2;
+
+	// Name of Google project.  Required.
+	optional string project = 3;
+
+	// Name of zone within which the instance group is located. Required.
+	optional string zone = 4;
+
+	// Name of the instance group. Required.
+	optional string instance_group = 5;
+
+	// If set, append this sub-domain to instance names. (e.g. c.<project-name>.internal)
+	optional string append_domain = 6;
+
+	// Port number for HTTP metrics query.
+	optional int32 port = 7 [default = 80];
+}
+
+
 // The configuration for a Prometheus job to scrape.
 //
 // The next field no. is 8.
@@ -73,6 +100,10 @@ message JobConfig {
 	repeated TargetGroup target_group = 5;
 	// The HTTP resource path to fetch metrics from on targets.
 	optional string metrics_path = 6 [default = "/metrics"];
+
+	// If set, use GCE to discover targets via listing an instance group.
+	// Should not have sd_name or target_group set.
+	optional GCEInstanceGroupDiscovery gce_discovery = 60;
 }
 
 // The top-level Prometheus configuration.

@@ -53,10 +53,16 @@ func NewTargetManager(sampleAppender storage.SampleAppender, globalLabels client
 func (m *targetManager) targetPoolForJob(job config.JobConfig) *TargetPool {
 	targetPool, ok := m.poolsByJob[job.GetName()]
 
+	glog.Infof("Get target pool for %s", job.GetName())
+
 	if !ok {
+		glog.Infof("No pool found")
 		var provider TargetProvider
 		if job.SdName != nil {
 			provider = NewSdTargetProvider(job, m.globalLabels)
+		} else if job.GceDiscovery != nil {
+			glog.Infof("Making new GCE instance group provider")
+			provider = NewGceInstanceGroupProvider(job, m.globalLabels)
 		}
 
 		interval := job.ScrapeInterval()
@@ -93,7 +99,7 @@ func (m *targetManager) Remove(t Target) {
 
 func (m *targetManager) AddTargetsFromConfig(config config.Config) {
 	for _, job := range config.Jobs() {
-		if job.SdName != nil {
+		if job.SdName != nil || job.GceDiscovery != nil {
 			m.Lock()
 			m.targetPoolForJob(job)
 			m.Unlock()
