@@ -26,12 +26,12 @@ var (
 			Help:	  "The number of GCE backend service discovery failures.",
 		})
 
-    gceDiscoveryClientBackends = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	gceDiscoveryClientBackends = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: namespace,
-            Name: "gce_targets",
-            Help: "Number of instances discovered for each instance group.",
-        },
-        []string{"zone", "group"})
+			Name: "gce_targets",
+			Help: "Number of instances discovered for each instance group.",
+		},
+		[]string{"zone", "group"})
 )
 
 func init() {
@@ -64,10 +64,10 @@ func NewGceInstanceGroupProvider(job config.JobConfig, globalLabels clientmodel.
 		backends: make(map[string]*_gceLBBackend),
 		job:			 job,
 	 	globalLabels:	globalLabels,
-        exportLabels:	prometheus.Labels{
-            "zone":job.GetGceDiscovery().GetZone(),
-            "group":job.GetGceDiscovery().GetInstanceGroup(),
-        },
+		exportLabels:	prometheus.Labels{
+			"zone":job.GetGceDiscovery().GetZone(),
+			"group":job.GetGceDiscovery().GetInstanceGroup(),
+		},
 	}
 	if len(job.GetGceDiscovery().GetApiProxyUrl()) != 0 {
 		proxyUrl, _ := url.Parse(job.GetGceDiscovery().GetApiProxyUrl())
@@ -80,190 +80,63 @@ func NewGceInstanceGroupProvider(job config.JobConfig, globalLabels clientmodel.
 
 // Per: https://cloud.google.com/compute/docs/authentication
 func (lb *gceInstanceGroupProvider) refreshAccessToken() error {
-    if len(lb.authHeader) > 0 && lb.tokenExpires.After(time.Now()) {
-        // Still valid.
-        return nil
-    }
+	if len(lb.authHeader) > 0 && lb.tokenExpires.After(time.Now()) {
+		// Still valid.
+		return nil
+	}
 
-    lb.authHeader = ""
+	lb.authHeader = ""
 
-    accessTokenUrl :=
-        fmt.Sprintf("http://metadata/computeMetadata/v1/instance/service-accounts/%s/token",
-            lb.job.GetGceDiscovery().GetServiceAccount())
-    req, _ := http.NewRequest("GET", accessTokenUrl, nil)
-    req.Header.Add("Metadata-Flavor", "Google" )
-    resp, err := http.DefaultClient.Do(req)
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        glog.Errorf("Read token response: %s", err)
-        return err
-    }
-    // {"access_token":"ya29.XAE9ZoxvmWXrdqsfjd9ORctCcafAwOZpMKclr2yfIMAGZBxmpSRZbKXK","expires_in":3599,"token_type":"Bearer"}
+	accessTokenUrl :=
+		fmt.Sprintf("http://metadata/computeMetadata/v1/instance/service-accounts/%s/token",
+			lb.job.GetGceDiscovery().GetServiceAccount())
+	req, _ := http.NewRequest("GET", accessTokenUrl, nil)
+	req.Header.Add("Metadata-Flavor", "Google" )
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		glog.Errorf("Read token response: %s", err)
+		return err
+	}
+	// {"access_token":"ya29.XAE9ZoxvmWXrdqsfjd9ORctCcafAwOZpMKclr2yfIMAGZBxmpSRZbKXK","expires_in":3599,"token_type":"Bearer"}
 
-    var tokenResponse struct{
-        AccessToken string      `json:"access_token"`
-        ExpiresInSec int        `json:"expires_in"`
-        TokenType string        `json:"token_type"`
-    }
-    err = json.Unmarshal(body, &tokenResponse)
-    if err != nil {
-        glog.Errorf("Parse token response: %s", err)
-        return  err
-    }
+	var tokenResponse struct{
+		AccessToken string	  `json:"access_token"`
+		ExpiresInSec int		`json:"expires_in"`
+		TokenType string		`json:"token_type"`
+	}
+	err = json.Unmarshal(body, &tokenResponse)
+	if err != nil {
+		glog.Errorf("Parse token response: %s", err)
+		return  err
+	}
 
-    token := tokenResponse.AccessToken
+	token := tokenResponse.AccessToken
 
-    if len(token) == 0 {
-        return fmt.Errorf("Empty access token.")
-    }
+	if len(token) == 0 {
+		return fmt.Errorf("Empty access token.")
+	}
 
 	lb.authHeader = fmt.Sprintf("%s %s", tokenResponse.TokenType, token)
 	lb.tokenExpires = time.Now().Add(time.Duration(tokenResponse.ExpiresInSec) * time.Second)
 
-    glog.Infof("**** Refreshed %s access token, expires in %d sec", tokenResponse.TokenType, tokenResponse.ExpiresInSec)
+	glog.Infof("**** Refreshed %s access token, expires in %d sec", tokenResponse.TokenType, tokenResponse.ExpiresInSec)
 
-    return nil
+	return nil
 }
 
 type _gceApiErrorJson struct {
-	Code int                            `json:"code"`
-	Message string                      `json:"message"`
+	Code int							`json:"code"`
+	Message string					  `json:"message"`
 }
 
 type _gceApiResponseJson struct {
-	Error *_gceApiErrorJson                `json:"error"`
+	Error *_gceApiErrorJson				`json:"error"`
 }
-
-/*
-type _gceLBBackendItemJson struct {
-    Description string              `json:"description"`
-    Group string                    `json:"group"`
-    BalancingMode string            `json:"balancingMode"`
-    MaxUtilization float32          `json:"maxUtilization"`
-    CapacityScaler float32          `json:"capacityScaler"`
-}
-
-type _gceLBBackendServiceJson struct {
-    _gceApiResponseJson
-
-    Kind string                     `json:"kind"`
-    Id string                       `json:"id"`
-    CreationTimestamp string        `json:"creationTimestamp"`
-    Name string                     `json:"name"`
-    SelfLink string                 `json:"selfLink"`
-    Backends []*_gceLBBackendItemJson  `json:"backends"`
-    HealthChecks []string           `json:"healthChecks"`
-    TimeoutSec int                  `json:"timeoutSec"`
-    Port int                        `json:"port"`
-    Protocol string                 `json:"protocol"`
-    Fingerprint string              `json:"fingerprint"`
-    PortName string                 `json:"portName"`
-}
-
-func (lb *gceInstanceGroupProvider) getBackendServiceGroups() ([]string, error) {
-    getBackendServiceUrl :=
-        fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/backendServices/%s",
-            lb.job.GetGceDiscovery().GetProject(),
-            lb.job.GetGceDiscovery().GetBackendService())
-
-    glog.Infof("*** GET %s", string(getBackendServiceUrl))
-    req, _ := http.NewRequest("GET", getBackendServiceUrl, nil)
-    req.Header.Add("Authorization", lb.authHeader)
-    resp, err := lb.apiClient.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        glog.Errorf("Read backend service: %s", err)
-        return nil, err
-    }
-
-    var service _gceLBBackendServiceJson
-    err = json.Unmarshal(body, &service)
-    if err != nil {
-        glog.Errorf("Parse backend service: %s", err)
-        return nil, err
-    }
-
-    if service.Error != nil && len(service.Error.Message) > 0 {
-        return nil, errors.New(service.Error.Message)
-    }
-
-    // Store the protocol and port.
-    lb.mu.Lock()
-    lb.protocol = strings.ToLower(service.Protocol)
-    lb.port = service.Port
-    lb.mu.Unlock()
-
-    groups := make([]string, len(service.Backends))
-    for idx, backendItem := range service.Backends {
-        groups[idx] = backendItem.Group
-        glog.Infof("Group %s", backendItem.Group)
-    }
-
-    return groups, nil
-}
-
-type _gceLBInstanceHealthStatusJson struct {
-    Port int                                    `json:"port"`
-    Instance string                             `json:"instance"`
-    HealthState string                          `json:"healthState"`
-}
-
-type _gceLBBackendServiceGroupHealthJson struct {
-    _gceApiResponseJson
-
-    Kind string                                 `json:"kind"`
-    HealthStatus []*_gceLBInstanceHealthStatusJson `json:"healthStatus"`
-}
-
-func (lb *gceInstanceGroupProvider) getInstanceHealth(instanceGroup string) ([]*_gceLBInstanceHealthStatusJson, error) {
-    getHealthUrl :=
-        fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/global/backendServices/%s/getHealth?alt=json",
-            lb.job.GetGceDiscovery().GetProject(),
-            lb.job.GetGceDiscovery().GetBackendService())
-    
-    var healthReqBody = struct{
-        Group string `json:"group"`
-    }{instanceGroup}
-
-    healthReqJson, _ := json.Marshal(healthReqBody)
-    glog.Infof("*** POST %s", getHealthUrl)
-    req, _ := http.NewRequest("POST", getHealthUrl, bytes.NewReader(healthReqJson))
-    req.Header.Add("Authorization", lb.authHeader)
-    req.Header.Add("Content-Type", "application/json")
-
-    resp, err := lb.apiClient.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        glog.Errorf("Read group health: %s", err)
-        return nil, err
-    }
-
-    var groupHealth _gceLBBackendServiceGroupHealthJson
-    err = json.Unmarshal(body, &groupHealth)
-    if err != nil {
-        glog.Errorf("Parse group health: %s", err)
-        return  nil, err
-    }
-
-    if groupHealth.Error != nil && len(groupHealth.Error.Message) > 0 {
-        return nil, errors.New(groupHealth.Error.Message)
-    }
-
-    return groupHealth.HealthStatus, nil
-}
-*/
 
 type _gceLabelJson struct {
 	Key string						`json:"key"`
@@ -276,53 +149,53 @@ type _gceEndpointJson struct {
 
 // Known as "resourceView" in the v1beta2 API.
 type _gceInstanceGroupJson struct {
-    _gceApiResponseJson
+	_gceApiResponseJson
 
-    Kind string                     `json:"kind"`
-    Name string                     `json:"name"`
-    Description string              `json:"name"`
+	Kind string						`json:"kind"`
+	Name string						`json:"name"`
+	Description string				`json:"name"`
 	Size int						`json:"size"`
-    CreationTimestamp string        `json:"creationTimestamp"`
+	CreationTimestamp string		`json:"creationTimestamp"`
 	Resources []string				`json:"resources"`
 	Id string						`json:"id"`
-    SelfLink string                 `json:"selfLink"`
-    Labels []_gceLabelJson			`json:"labels"`
+	SelfLink string				 	`json:"selfLink"`
+	Labels []_gceLabelJson			`json:"labels"`
 	Endpoints []_gceEndpointJson	`json:"endpoints"`
 	Network string					`json:"network"`
 	Fingerprint string				`json:"fingerprint"`
 }
 
 func (lb *gceInstanceGroupProvider) getInstanceGroupResources() ([]string, error) {
-    getInstanceGroupUrl :=
-        fmt.Sprintf("https://www.googleapis.com/resourceviews/v1beta2/projects/%s/zones/%s/resourceViews/%s",
-            lb.job.GetGceDiscovery().GetProject(),
-            lb.job.GetGceDiscovery().GetZone(),
-            lb.job.GetGceDiscovery().GetInstanceGroup())
+	getInstanceGroupUrl :=
+		fmt.Sprintf("https://www.googleapis.com/resourceviews/v1beta2/projects/%s/zones/%s/resourceViews/%s",
+			lb.job.GetGceDiscovery().GetProject(),
+			lb.job.GetGceDiscovery().GetZone(),
+			lb.job.GetGceDiscovery().GetInstanceGroup())
 
-    req, _ := http.NewRequest("GET", getInstanceGroupUrl, nil)
-    req.Header.Add("Authorization", lb.authHeader)
-    resp, err := lb.apiClient.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        glog.Errorf("Read instance group %s: %s",
+	req, _ := http.NewRequest("GET", getInstanceGroupUrl, nil)
+	req.Header.Add("Authorization", lb.authHeader)
+	resp, err := lb.apiClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		glog.Errorf("Read instance group %s: %s",
 			lb.job.GetGceDiscovery().GetInstanceGroup(), err)
-        return nil, err
-    }
+		return nil, err
+	}
 
-    var group _gceInstanceGroupJson
-    err = json.Unmarshal(body, &group)
-    if err != nil {
-        glog.Errorf("Parse instance group: %s", err)
-        return nil, err
-    }
+	var group _gceInstanceGroupJson
+	err = json.Unmarshal(body, &group)
+	if err != nil {
+		glog.Errorf("Parse instance group: %s", err)
+		return nil, err
+	}
 
-    if group.Error != nil && len(group.Error.Message) > 0 {
-        return nil, errors.New(group.Error.Message)
-    }
+	if group.Error != nil && len(group.Error.Message) > 0 {
+		return nil, errors.New(group.Error.Message)
+	}
 
 	return group.Resources, nil
 }
