@@ -61,11 +61,16 @@ message GCEInstanceGroupDiscovery {
 	// Name of Google project.  Required.
 	optional string project = 3;
 
-	// Name of zone within which the instance group is located. Required.
-	optional string zone = 4;
+	message InstanceGroup {
+		// Name of zone within which the instance group is located. Required.
+		optional string zone = 1;
 
-	// Name of the instance group. Required.
-	optional string instance_group = 5;
+		// Name of the instance group. Required.
+		optional string group_name = 2;
+	}
+
+	// List of one or more instance groups to poll.
+	repeated InstanceGroup groups = 4;
 
 	// If set, append this sub-domain to instance names. (e.g. c.<project-name>.internal)
 	optional string append_domain = 6;

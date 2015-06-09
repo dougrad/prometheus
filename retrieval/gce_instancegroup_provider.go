@@ -31,7 +31,7 @@ var (
 			Name: "gce_targets",
 			Help: "Number of instances discovered for each instance group.",
 		},
-		[]string{"zone", "group"})
+		[]string{"zone", "instance_group"})
 )
 
 func init() {
@@ -54,7 +54,6 @@ type gceInstanceGroupProvider struct {
 	backends map[string]*_gceLBBackend
 
 	globalLabels clientmodel.LabelSet
-	exportLabels prometheus.Labels
 	targets	  []Target
 }
 
@@ -64,10 +63,6 @@ func NewGceInstanceGroupProvider(job config.JobConfig, globalLabels clientmodel.
 		backends: make(map[string]*_gceLBBackend),
 		job:			 job,
 	 	globalLabels:	globalLabels,
-		exportLabels:	prometheus.Labels{
-			"zone":job.GetGceDiscovery().GetZone(),
-			"group":job.GetGceDiscovery().GetInstanceGroup(),
-		},
 	}
 	if len(job.GetGceDiscovery().GetApiProxyUrl()) != 0 {
 		proxyUrl, _ := url.Parse(job.GetGceDiscovery().GetApiProxyUrl())
@@ -165,12 +160,11 @@ type _gceInstanceGroupJson struct {
 	Fingerprint string				`json:"fingerprint"`
 }
 
-func (lb *gceInstanceGroupProvider) getInstanceGroupResources() ([]string, error) {
+func (lb *gceInstanceGroupProvider) getInstanceGroupResources(zone, instance_group string) ([]string, error) {
 	getInstanceGroupUrl :=
 		fmt.Sprintf("https://www.googleapis.com/resourceviews/v1beta2/projects/%s/zones/%s/resourceViews/%s",
 			lb.job.GetGceDiscovery().GetProject(),
-			lb.job.GetGceDiscovery().GetZone(),
-			lb.job.GetGceDiscovery().GetInstanceGroup())
+			zone, instance_group)
 
 	req, _ := http.NewRequest("GET", getInstanceGroupUrl, nil)
 	req.Header.Add("Authorization", lb.authHeader)
@@ -181,8 +175,7 @@ func (lb *gceInstanceGroupProvider) getInstanceGroupResources() ([]string, error
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		glog.Errorf("Read instance group %s: %s",
-			lb.job.GetGceDiscovery().GetInstanceGroup(), err)
+		glog.Errorf("Read instance group %s/%s: %s", zone, instance_group, err)
 		return nil, err
 	}
 
@@ -200,14 +193,14 @@ func (lb *gceInstanceGroupProvider) getInstanceGroupResources() ([]string, error
 	return group.Resources, nil
 }
 
-func (lb *gceInstanceGroupProvider) getBackendList() ([]*_gceLBBackend, error) {
+func (lb *gceInstanceGroupProvider) getBackendList(zone, instance_group string) ([]*_gceLBBackend, error) {
 	// Get access token.
 	err := lb.refreshAccessToken()
 	if err != nil {
 		return nil, err
 	}
 
-	resources, err := lb.getInstanceGroupResources()
+	resources, err := lb.getInstanceGroupResources(zone, instance_group)
 	if err != nil {
 		return nil, err
 	}
@@ -232,37 +225,45 @@ func (lb *gceInstanceGroupProvider) Targets() ([]Target, error) {
 		}
 	}()
 
-	baseLabels := clientmodel.LabelSet{
-		clientmodel.JobLabel: clientmodel.LabelValue(lb.job.GetName()),
-	}
-	for n, v := range lb.globalLabels {
-		baseLabels[n] = v
-	}
+	targets := make([]Target, 0, len(lb.targets))
 
-	newBackendList, err := lb.getBackendList()
-	if err != nil {
-		glog.Warningf("Failed to fetch backend list: %s", err)
-		return nil, err
-	}
-	backendSize := len(newBackendList)
-	gceDiscoveryClientBackends.With(lb.exportLabels).Set(float64(backendSize))
+	for _, group := range(lb.job.GetGceDiscovery().Groups) {
+		baseLabels := clientmodel.LabelSet{
+			clientmodel.JobLabel: clientmodel.LabelValue(lb.job.GetName()),
+		}
+		for n, v := range lb.globalLabels {
+			baseLabels[n] = v
+		}
+		baseLabels[clientmodel.LabelName("zone")] = clientmodel.LabelValue(group.GetZone())
+		baseLabels[clientmodel.LabelName("instance_group")] = clientmodel.LabelValue(group.GetGroupName())
 
-	targets := make([]Target, 0, backendSize)
-	endpoint := &url.URL{
-		Scheme: "http",
-		Path:   lb.job.GetMetricsPath(),
-	}
-	var domainSuffix string
-	if len(lb.job.GetGceDiscovery().GetAppendDomain()) > 0 {
-		domainSuffix = fmt.Sprintf(".%s", lb.job.GetGceDiscovery().GetAppendDomain())
-	}
-	for _, backend := range newBackendList {
-		endpoint.Host = fmt.Sprintf("%s%s:%d",
-			backend.instanceName,
-			domainSuffix,
-			lb.job.GetGceDiscovery().GetPort())
-		t := NewTarget(endpoint.String(), lb.job.ScrapeTimeout(), baseLabels)
-		targets = append(targets, t)
+		newBackendList, err := lb.getBackendList(group.GetZone(), group.GetGroupName())
+		if err != nil {
+			glog.Warningf("Failed to fetch backend list: %s", err)
+			return nil, err
+		}
+		exportLabels := prometheus.Labels{
+			"zone":group.GetZone(),
+			"instance_group":group.GetGroupName(),
+		}
+		gceDiscoveryClientBackends.With(exportLabels).Set(float64(len(newBackendList)))
+
+		endpoint := &url.URL{
+			Scheme: "http",
+			Path:   lb.job.GetMetricsPath(),
+		}
+		var domainSuffix string
+		if len(lb.job.GetGceDiscovery().GetAppendDomain()) > 0 {
+			domainSuffix = fmt.Sprintf(".%s", lb.job.GetGceDiscovery().GetAppendDomain())
+		}
+		for _, backend := range newBackendList {
+			endpoint.Host = fmt.Sprintf("%s%s:%d",
+				backend.instanceName,
+				domainSuffix,
+				lb.job.GetGceDiscovery().GetPort())
+			t := NewTarget(endpoint.String(), lb.job.ScrapeTimeout(), baseLabels)
+			targets = append(targets, t)
+		}
 	}
 
 	lb.targets = targets

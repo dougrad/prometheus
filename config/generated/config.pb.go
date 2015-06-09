@@ -157,10 +157,8 @@ type GCEInstanceGroupDiscovery struct {
 	ApiProxyUrl *string `protobuf:"bytes,2,opt,name=api_proxy_url" json:"api_proxy_url,omitempty"`
 	// Name of Google project.  Required.
 	Project *string `protobuf:"bytes,3,opt,name=project" json:"project,omitempty"`
-	// Name of zone within which the instance group is located. Required.
-	Zone *string `protobuf:"bytes,4,opt,name=zone" json:"zone,omitempty"`
-	// Name of the instance group. Required.
-	InstanceGroup *string `protobuf:"bytes,5,opt,name=instance_group" json:"instance_group,omitempty"`
+	// List of one or more instance groups to poll.
+	Groups []*GCEInstanceGroupDiscovery_InstanceGroup `protobuf:"bytes,4,rep,name=groups" json:"groups,omitempty"`
 	// If set, append this sub-domain to instance names. (e.g. c.<project-name>.internal)
 	AppendDomain *string `protobuf:"bytes,6,opt,name=append_domain" json:"append_domain,omitempty"`
 	// Port number for HTTP metrics query.
@@ -196,18 +194,11 @@ func (m *GCEInstanceGroupDiscovery) GetProject() string {
 	return ""
 }
 
-func (m *GCEInstanceGroupDiscovery) GetZone() string {
-	if m != nil && m.Zone != nil {
-		return *m.Zone
+func (m *GCEInstanceGroupDiscovery) GetGroups() []*GCEInstanceGroupDiscovery_InstanceGroup {
+	if m != nil {
+		return m.Groups
 	}
-	return ""
-}
-
-func (m *GCEInstanceGroupDiscovery) GetInstanceGroup() string {
-	if m != nil && m.InstanceGroup != nil {
-		return *m.InstanceGroup
-	}
-	return ""
+	return nil
 }
 
 func (m *GCEInstanceGroupDiscovery) GetAppendDomain() string {
@@ -222,6 +213,34 @@ func (m *GCEInstanceGroupDiscovery) GetPort() int32 {
 		return *m.Port
 	}
 	return Default_GCEInstanceGroupDiscovery_Port
+}
+
+type GCEInstanceGroupDiscovery_InstanceGroup struct {
+	// Name of zone within which the instance group is located. Required.
+	Zone *string `protobuf:"bytes,1,opt,name=zone" json:"zone,omitempty"`
+	// Name of the instance group. Required.
+	GroupName        *string `protobuf:"bytes,2,opt,name=group_name" json:"group_name,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *GCEInstanceGroupDiscovery_InstanceGroup) Reset() {
+	*m = GCEInstanceGroupDiscovery_InstanceGroup{}
+}
+func (m *GCEInstanceGroupDiscovery_InstanceGroup) String() string { return proto.CompactTextString(m) }
+func (*GCEInstanceGroupDiscovery_InstanceGroup) ProtoMessage()    {}
+
+func (m *GCEInstanceGroupDiscovery_InstanceGroup) GetZone() string {
+	if m != nil && m.Zone != nil {
+		return *m.Zone
+	}
+	return ""
+}
+
+func (m *GCEInstanceGroupDiscovery_InstanceGroup) GetGroupName() string {
+	if m != nil && m.GroupName != nil {
+		return *m.GroupName
+	}
+	return ""
 }
 
 // The configuration for a Prometheus job to scrape.
