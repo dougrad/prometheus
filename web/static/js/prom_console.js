@@ -141,7 +141,7 @@ PromConsole.TimeControl._initialValues = function() {
   if (hash.indexOf('#pctc') == 0) {
     return JSON.parse(decodeURIComponent(hash.substring(5)));
   }
-  return {duration: 3600, endTime: new Date().getTime() / 1000, endTimeNow: true};
+  return {duration: 84600, endTime: new Date().getTime() / 1000, endTimeNow: true};
 }();
 
 PromConsole.TimeControl.prototype.parseDuration = function(durationText) {
