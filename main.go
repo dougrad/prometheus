@@ -74,6 +74,8 @@ var (
 	pathPrefix = flag.String("web.path-prefix", "/", "Prefix for all web paths.")
 
 	printVersion = flag.Bool("version", false, "Print version information.")
+
+	prometheusUrl = flag.String("web.base-url", "", "Protocol, host and port portion of URL to reach this server. If unset, uses hostname and bind port.")
 )
 
 type prometheus struct {
@@ -159,12 +161,23 @@ func NewPrometheus() *prometheus {
 
 	queryEngine := promql.NewEngine(memStorage)
 
+	var selfUrl string
+	if *prometheusUrl == "" {
+		selfUrl = web.MustBuildServerURL(*pathPrefix)
+	} else {
+		selfUrl = *prometheusUrl
+		if selfUrl[len(selfUrl)-1] == '/' {
+			selfUrl = selfUrl[:len(selfUrl)-1]
+		}
+		selfUrl = selfUrl + *pathPrefix
+	}
+
 	ruleManager := rules.NewManager(&rules.ManagerOptions{
 		SampleAppender:      sampleAppender,
 		NotificationHandler: notificationHandler,
 		EvaluationInterval:  conf.EvaluationInterval(),
 		QueryEngine:         queryEngine,
-		PrometheusURL:       web.MustBuildServerURL(*pathPrefix),
+		PrometheusURL:       selfUrl,
 		PathPrefix:          *pathPrefix,
 	})
 	if err := ruleManager.LoadRuleFiles(conf.Global.GetRuleFile()...); err != nil {
